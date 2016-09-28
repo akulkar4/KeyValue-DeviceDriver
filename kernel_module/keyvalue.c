@@ -50,13 +50,6 @@ static void free_callback(void *data)
 static long keyvalue_get(struct keyvalue __user *ukv)
 {
     struct keyvalue_get kv;
-    int ret;
-
-//    if (copy_from_user(&pin, upin, sizeof(pin)))
-//        return -EFAULT;
-
-//    if ((p = kmalloc(sizeof(*p), GFP_KERNEL)) == NULL)
-//        return -ENOMEM;
 
     return transaction_id++;
 }
