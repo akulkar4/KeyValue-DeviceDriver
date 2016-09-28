@@ -47,21 +47,21 @@ static void free_callback(void *data)
 {
 }
 
-static long keyvalue_get(struct keyvalue __user *ukv)
+static long keyvalue_get(struct keyvalue_get __user *ukv)
 {
     struct keyvalue_get kv;
 
     return transaction_id++;
 }
 
-static long keyvalue_set(struct keyvalue __user *ukv)
+static long keyvalue_set(struct keyvalue_set __user *ukv)
 {
     struct keyvalue_set kv;
 
     return transaction_id++;
 }
 
-static long keyvalue_delete(struct keyvalue __user *ukv)
+static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 {
     struct keyvalue_delete kv;
 
