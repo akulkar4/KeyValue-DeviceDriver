@@ -30,7 +30,6 @@
 ////////////////////////////////////////////////////////////////////////
 
 #include "keyvalue.h"
-//#include "page_handle.h"
 
 #include <asm/uaccess.h>
 #include <linux/slab.h>
@@ -43,16 +42,14 @@
 #include <linux/moduleparam.h>
 #include <linux/poll.h>
 
-//struct semaphore wait_sem;
-//struct semaphore exclude_sem;
-
+unsigned transaction_id;
 static void free_callback(void *data)
 {
 }
 
 static long keyvalue_get(struct keyvalue __user *ukv)
 {
-    struct keyvalue kv;
+    struct keyvalue_get kv;
     int ret;
 
 //    if (copy_from_user(&pin, upin, sizeof(pin)))
@@ -61,21 +58,21 @@ static long keyvalue_get(struct keyvalue __user *ukv)
 //    if ((p = kmalloc(sizeof(*p), GFP_KERNEL)) == NULL)
 //        return -ENOMEM;
 
-    return 0;
+    return transaction_id++;
 }
 
-static long keyvalue_put(struct keyvalue __user *ukv)
+static long keyvalue_set(struct keyvalue __user *ukv)
 {
-    struct keyvalue kv;
+    struct keyvalue_set kv;
 
-    return 0;
+    return transaction_id++;
 }
 
 static long keyvalue_delete(struct keyvalue __user *ukv)
 {
-    struct keyvalue kv;
+    struct keyvalue_delete kv;
 
-    return 0;
+    return transaction_id++;
 }
 
 //Added by Hung-Wei
@@ -84,9 +81,6 @@ unsigned int keyvalue_poll(struct file *filp, struct poll_table_struct *wait)
 {
     unsigned int mask = 0;
     printk("keyvalue_poll called. Process queued\n");
-//    down_interruptible(&nvmed_pinbuf_wait_sem);
-//    poll_wait(filp, &nvmed_pinbuf_wait_queue, wait);
-//    mask |= POLLIN;
     return mask;
 }
 
@@ -96,8 +90,8 @@ static long keyvalue_ioctl(struct file *filp, unsigned int cmd,
     switch (cmd) {
     case KEYVALUE_IOCTL_GET:
         return keyvalue_get((void __user *) arg);
-    case KEYVALUE_IOCTL_PUT:
-        return keyvalue_put((void __user *) arg);
+    case KEYVALUE_IOCTL_SET:
+        return keyvalue_set((void __user *) arg);
     case KEYVALUE_IOCTL_DELETE:
         return keyvalue_delete((void __user *) arg);
     default:
@@ -129,9 +123,6 @@ static int __init keyvalue_init(void)
 
     if ((ret = misc_register(&keyvalue_dev)))
         printk(KERN_ERR "Unable to register \"keyvalue\" misc device\n");
-//    init_waitqueue_head (&nvmed_pinbuf_wait_queue);
-//    sema_init(&nvmed_pinbuf_wait_sem, 0);
-//    sema_init(&nvmed_pinbuf_exclude_sem, 0);
     return ret;
 }
 
