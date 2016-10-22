@@ -30,7 +30,6 @@
 ////////////////////////////////////////////////////////////////////////
 
 #include "keyvalue.h"
-
 #include <asm/uaccess.h>
 #include <linux/slab.h>
 #include <linux/kernel.h>
@@ -42,34 +41,61 @@
 #include <linux/moduleparam.h>
 #include <linux/poll.h>
 
+/*keyvalue linked list struct node declaration */
+typedef struct node {
+  __u64 key;
+  __u64 *size;
+  void *data;
+  struct node *next;
+}keyval_node;
+
 unsigned transaction_id;
 static void free_callback(void *data)
 {
 }
 
+
+/*handlers required for handling get, set and del
+ *return types void for now.
+ *TODO: Can be converted to thread functions. 
+ *TODO: Kernel level threading?
+*/
+keyval_node *head = NULL;
+uint8_t handleSet(struct keyvalue_set kv);
+uint8_t handleGet(struct keyvalue_get kv);
+uint8_t handleDel(struct keyvalue_delete kv);
+keyval_node *searchList(__u64 key);
+
 static long keyvalue_get(struct keyvalue_get __user *ukv)
 {
+    uint8_t result;
     struct keyvalue_get kv;
-
+    kv.key = ukv->key;
+    result = handleGet(kv);
     return transaction_id++;
 }
 
 static long keyvalue_set(struct keyvalue_set __user *ukv)
 {
-    struct keyvalue_set kv;
-
-    return transaction_id++;
+  uint8_t result;
+  struct keyvalue_set kv;
+  kv.key = ukv->key;
+  kv.size = ukv->size;
+  kv.data = ukv->data;
+  result = handleSet(kv);
+  return transaction_id++;
 }
 
 static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 {
-    struct keyvalue_delete kv;
-
-    return transaction_id++;
+  uint8_t result;
+  struct keyvalue_delete kv;
+  kv.key = ukv->key;
+  result = handleDel(kv);
+  return transaction_id++;
 }
 
 //Added by Hung-Wei
-     
 unsigned int keyvalue_poll(struct file *filp, struct poll_table_struct *wait)
 {
     unsigned int mask = 0;
@@ -122,6 +148,64 @@ static int __init keyvalue_init(void)
 static void __exit keyvalue_exit(void)
 {
     misc_deregister(&keyvalue_dev);
+}
+
+//Added by Alok
+/*handleSet: 
+ *- Checks if key already exists in some node. 
+ *- Overwrites existing key with new size and address.
+ *- If key doesn't exist, adds a new node at the end.
+ *- Returns 1 on success, 0 on failure
+ */
+uint8_t handleSet(struct keyvalue_set kv)
+{
+  keyval_node *keyloc = searchList(kv.key);
+  return 0;
+}
+
+/*handleGet: 
+ *- Searches list starting from head. 
+ *- Returns 1 if found, 0 if not found.
+ *- If found, assigns values to passed struct.
+ */
+uint8_t handleGet(struct keyvalue_get kv)
+{
+  keyval_node *keyloc = searchList(kv.key);
+  return 0;
+}
+
+/*handleDel: 
+ *- Checks if key exists. 
+ *- Free the node, adjust list 
+ *- Returns 1 on success, 0 on failure
+ */
+uint8_t handleDel(struct keyvalue_delete kv)
+{
+  keyval_node *keyloc = searchList(kv.key);
+  return 0;
+}
+
+/*checkList: 
+ *- Checks if key exists.  
+ */
+keyval_node *searchList(__u64 key)
+{
+  uint8_t found = 0;
+  keyval_node *tmp;
+  tmp = head;
+  while(tmp != NULL)
+    {
+      if(tmp->key == key)
+	{
+	  //if key is found, break #TODO: return pointer
+	  found = 1;
+	  return tmp;
+	  break;
+	}
+      tmp = tmp->next;
+    }
+  //if key not found in the list, return NULL
+  return NULL;
 }
 
 MODULE_AUTHOR("Hung-Wei Tseng <htseng3@ncsu.edu>");
