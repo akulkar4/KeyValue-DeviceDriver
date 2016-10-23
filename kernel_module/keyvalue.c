@@ -76,15 +76,18 @@ keyval_node *hashtable[H_SIZE];
 static long keyvalue_get(struct keyvalue_get __user *ukv)
 {
     uint8_t result;
-    uint16_t key = gethashkey(ukv->key);
+    struct keyvalue_get getStruct;
+    copy_from_user(&getStruct, ukv, sizeof(getStruct));
+    uint16_t key = gethashkey(getStruct.key);
     keyval_node *tmp = hashtable[key];
     
     while (tmp != NULL)
       {
-	if(tmp->key == ukv->key)
+	if(tmp->key == getStruct.key)
 	  {
-	    result = copy_to_user(ukv->size, &(tmp->size), sizeof(tmp->size));
-	    copy_to_user(ukv->data, tmp->data, tmp->size);
+	    result = copy_to_user(getStruct.size, &(tmp->size), sizeof(tmp->size));
+	    printk(KERN_DEBUG "Result of size:%d",result);
+	    result = copy_to_user(getStruct.data, tmp->data, tmp->size);
 	    printk(KERN_DEBUG "HIT! Size: %d, Result is :%d\n", sizeof(tmp->size),result);
 	    return transaction_id++;
 	  }
@@ -104,18 +107,21 @@ static long keyvalue_get(struct keyvalue_get __user *ukv)
 static long keyvalue_set(struct keyvalue_set __user *ukv)
 {
   uint8_t result;
-  uint16_t key = gethashkey(ukv->key);
+  struct keyvalue_set setStruct;
+  copy_from_user(&setStruct, ukv, sizeof(setStruct));
+  printk(KERN_DEBUG "Key: %lu, Size :%d, String: %s\n", setStruct.key, setStruct.size, setStruct.data);
+  uint16_t key = gethashkey(setStruct.key);
   keyval_node *tmp = hashtable[key];
 
   while(tmp != NULL)
     {
-      if(tmp->key == ukv->key)
+      if(tmp->key == setStruct.key)
+
 	{
-	  printk("\nHere");
 	  kfree(tmp->data);
-	  tmp->data = kmalloc(ukv->size, GFP_KERNEL);
-	  tmp->size = ukv->size;
-	  result = copy_from_user(tmp->data, ukv->data, ukv->size);
+	  tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
+	  tmp->size = setStruct.size;
+	  result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
 	  printk(KERN_DEBUG "Result is :%d\n, String: %s\n", result, tmp->data);
 	  if(result != 0)
 	    return -1;
@@ -128,10 +134,10 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
 
   tmp = (keyval_node *)kmalloc(sizeof(keyval_node), GFP_KERNEL);
   hashtable[key] = tmp;
-  tmp->key = ukv->key;
-  tmp->size = ukv->size;
-  tmp->data = kmalloc(ukv->size, GFP_KERNEL);
-  result = copy_from_user(tmp->data, ukv->data, ukv->size);
+  tmp->key = setStruct.key;
+  tmp->size = setStruct.size;
+  tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
+  result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
   printk(KERN_DEBUG "Result is :%d, Key:%lu, Size:%d, String: %s\n", result, tmp->key, tmp->size, tmp->data);
   tmp->next = NULL;
   if(result != 0)
