@@ -46,7 +46,8 @@
 #define H_SIZE 1024
 
 /*keyvalue linked list struct node declaration */
-typedef struct node {
+typedef struct node 
+{
   __u64 key;
   __u64 size;
   void *data;
@@ -75,17 +76,16 @@ keyval_node *hashtable[H_SIZE];
 static long keyvalue_get(struct keyvalue_get __user *ukv)
 {
     uint8_t result;
-    struct keyvalue_get getStruct;
-    copy_from_user((void *)&getStruct, (void *)ukv, sizeof(keyvalue_get));
-    uint16_t key = gethashkey(getStruct.key);
+    uint16_t key = gethashkey(ukv->key);
     keyval_node *tmp = hashtable[key];
     
     while (tmp != NULL)
       {
-	if(tmp->key == getStruct.key)
+	if(tmp->key == ukv->key)
 	  {
-	    copy_to_user((void *)getStruct.data, (void *)tmp->data, tmp->size);
-	    copy_to_user((void *)getStruct.size, (void *)&tmp->size, sizeof(tmp->size));
+	    result = copy_to_user(ukv->size, &(tmp->size), sizeof(tmp->size));
+	    copy_to_user(ukv->data, tmp->data, tmp->size);
+	    printk(KERN_DEBUG "HIT! Size: %d, Result is :%d\n", sizeof(tmp->size),result);
 	    return transaction_id++;
 	  }
 	else
@@ -104,19 +104,19 @@ static long keyvalue_get(struct keyvalue_get __user *ukv)
 static long keyvalue_set(struct keyvalue_set __user *ukv)
 {
   uint8_t result;
-  struct keyvalue_set setStruct;
-  copy_from_user((void *)&setStruct, (void *)ukv, sizeof(keyvalue_set));
-  uint16_t key = gethashkey(setStruct.key);
+  uint16_t key = gethashkey(ukv->key);
   keyval_node *tmp = hashtable[key];
 
   while(tmp != NULL)
     {
-      if(tmp->key == setStruct.key)
+      if(tmp->key == ukv->key)
 	{
+	  printk("\nHere");
 	  kfree(tmp->data);
-	  tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
-	  result = copy_from_user(&tmp->size, &setStruct.size, sizeof(setStruct.size));
-	  result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
+	  tmp->data = kmalloc(ukv->size, GFP_KERNEL);
+	  tmp->size = ukv->size;
+	  result = copy_from_user(tmp->data, ukv->data, ukv->size);
+	  printk(KERN_DEBUG "Result is :%d\n, String: %s\n", result, tmp->data);
 	  if(result != 0)
 	    return -1;
 	  else
@@ -125,11 +125,15 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
       else
 	tmp = tmp->next;
     }
-  
+
   tmp = (keyval_node *)kmalloc(sizeof(keyval_node), GFP_KERNEL);
-  tmp->key = setStruct.key;
-  tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
-  result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
+  hashtable[key] = tmp;
+  tmp->key = ukv->key;
+  tmp->size = ukv->size;
+  tmp->data = kmalloc(ukv->size, GFP_KERNEL);
+  result = copy_from_user(tmp->data, ukv->data, ukv->size);
+  printk(KERN_DEBUG "Result is :%d, Key:%lu, Size:%d, String: %s\n", result, tmp->key, tmp->size, tmp->data);
+  tmp->next = NULL;
   if(result != 0)
     return -1;
   else
@@ -190,17 +194,17 @@ static struct miscdevice keyvalue_dev = {
 static int __init keyvalue_init(void)
 {
   int ret, i;
+  
+  if ((ret = misc_register(&keyvalue_dev)))
+    printk(KERN_ERR "Unable to register \"keyvalue\" misc device\n");
     
-    if ((ret = misc_register(&keyvalue_dev)))
-        printk(KERN_ERR "Unable to register \"keyvalue\" misc device\n");
-    
-    //Initializing pointers to NULL
-    for(i=0; i<H_SIZE; i++)
-      {
-	hashtable[i] = NULL;
-      }
+  //Initializing pointers to NULL
+  for(i=0; i<H_SIZE; i++)
+    {
+      hashtable[i] = NULL;
+    }
 
-    return ret;
+  return ret;
 }
 
 static void __exit keyvalue_exit(void)
