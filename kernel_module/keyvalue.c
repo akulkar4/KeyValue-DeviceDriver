@@ -40,11 +40,15 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/poll.h>
+//#include <stdlib.h>
+
+#define H_BITS 10
+#define H_SIZE 1024
 
 /*keyvalue linked list struct node declaration */
 typedef struct node {
   __u64 key;
-  __u64 *size;
+  __u64 size;
   void *data;
   struct node *next;
 }keyval_node;
@@ -60,38 +64,85 @@ static void free_callback(void *data)
  *TODO: Can be converted to thread functions. 
  *TODO: Kernel level threading?
 */
-keyval_node *head = NULL;
-uint8_t handleSet(struct keyvalue_set kv);
-uint8_t handleGet(struct keyvalue_get kv);
-uint8_t handleDel(struct keyvalue_delete kv);
-keyval_node *searchList(__u64 key);
+uint16_t gethashkey(uint64_t key);
+keyval_node *hashtable[H_SIZE];
 
+/*  keyvalue_get: 
+ *- Searches list starting from head. 
+ *- Returns 1 if found, 0 if not found.
+ *- If found, assigns values to passed struct.
+ */
 static long keyvalue_get(struct keyvalue_get __user *ukv)
 {
     uint8_t result;
-    struct keyvalue_get kv;
-    kv.key = ukv->key;
-    result = handleGet(kv);
-    return transaction_id++;
+    struct keyvalue_get getStruct;
+    copy_from_user((void *)&getStruct, (void *)ukv, sizeof(keyvalue_get));
+    uint16_t key = gethashkey(getStruct.key);
+    keyval_node *tmp = hashtable[key];
+    
+    while (tmp != NULL)
+      {
+	if(tmp->key == getStruct.key)
+	  {
+	    copy_to_user((void *)getStruct.data, (void *)tmp->data, tmp->size);
+	    copy_to_user((void *)getStruct.size, (void *)&tmp->size, sizeof(tmp->size));
+	    return transaction_id++;
+	  }
+	else
+	  tmp = tmp->next;
+      }
+
+    return -1;
 }
 
+/*  keyvalue_set: 
+ *- Checks if key already exists in some node. 
+ *- Overwrites existing key with new size and address.
+ *- If key doesn't exist, adds a new node at the end.
+ *- Returns 1 on success, 0 on failure
+ */
 static long keyvalue_set(struct keyvalue_set __user *ukv)
 {
   uint8_t result;
-  struct keyvalue_set kv;
-  kv.key = ukv->key;
-  kv.size = ukv->size;
-  kv.data = ukv->data;
-  result = handleSet(kv);
-  return transaction_id++;
+  struct keyvalue_set setStruct;
+  copy_from_user((void *)&setStruct, (void *)ukv, sizeof(keyvalue_set));
+  uint16_t key = gethashkey(setStruct.key);
+  keyval_node *tmp = hashtable[key];
+
+  while(tmp != NULL)
+    {
+      if(tmp->key == setStruct.key)
+	{
+	  kfree(tmp->data);
+	  tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
+	  result = copy_from_user(&tmp->size, &setStruct.size, sizeof(setStruct.size));
+	  result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
+	  if(result != 0)
+	    return -1;
+	  else
+	    return transaction_id++;
+	}
+      else
+	tmp = tmp->next;
+    }
+  
+  tmp = (keyval_node *)kmalloc(sizeof(keyval_node), GFP_KERNEL);
+  tmp->key = setStruct.key;
+  tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
+  result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
+  if(result != 0)
+    return -1;
+  else
+    return transaction_id++;
 }
 
+/*  keyvalue_delete: 
+ *- Checks if key exists. 
+ *- Free the node, adjust list 
+ *- Returns 1 on success, 0 on failure
+ */
 static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 {
-  uint8_t result;
-  struct keyvalue_delete kv;
-  kv.key = ukv->key;
-  result = handleDel(kv);
   return transaction_id++;
 }
 
@@ -138,10 +189,17 @@ static struct miscdevice keyvalue_dev = {
 
 static int __init keyvalue_init(void)
 {
-    int ret;
-
+  int ret, i;
+    
     if ((ret = misc_register(&keyvalue_dev)))
         printk(KERN_ERR "Unable to register \"keyvalue\" misc device\n");
+    
+    //Initializing pointers to NULL
+    for(i=0; i<H_SIZE; i++)
+      {
+	hashtable[i] = NULL;
+      }
+
     return ret;
 }
 
@@ -150,62 +208,12 @@ static void __exit keyvalue_exit(void)
     misc_deregister(&keyvalue_dev);
 }
 
-//Added by Alok
-/*handleSet: 
- *- Checks if key already exists in some node. 
- *- Overwrites existing key with new size and address.
- *- If key doesn't exist, adds a new node at the end.
- *- Returns 1 on success, 0 on failure
+/*  gethashkey : 
+ *  Simple hashing function key exists. 
  */
-uint8_t handleSet(struct keyvalue_set kv)
+uint16_t gethashkey(uint64_t key)
 {
-  keyval_node *keyloc = searchList(kv.key);
-  return 0;
-}
-
-/*handleGet: 
- *- Searches list starting from head. 
- *- Returns 1 if found, 0 if not found.
- *- If found, assigns values to passed struct.
- */
-uint8_t handleGet(struct keyvalue_get kv)
-{
-  keyval_node *keyloc = searchList(kv.key);
-  return 0;
-}
-
-/*handleDel: 
- *- Checks if key exists. 
- *- Free the node, adjust list 
- *- Returns 1 on success, 0 on failure
- */
-uint8_t handleDel(struct keyvalue_delete kv)
-{
-  keyval_node *keyloc = searchList(kv.key);
-  return 0;
-}
-
-/*checkList: 
- *- Checks if key exists.  
- */
-keyval_node *searchList(__u64 key)
-{
-  uint8_t found = 0;
-  keyval_node *tmp;
-  tmp = head;
-  while(tmp != NULL)
-    {
-      if(tmp->key == key)
-	{
-	  //if key is found, break #TODO: return pointer
-	  found = 1;
-	  return tmp;
-	  break;
-	}
-      tmp = tmp->next;
-    }
-  //if key not found in the list, return NULL
-  return NULL;
+  return ((key * 11400714819323198549ul) >> (64 - H_BITS));
 }
 
 MODULE_AUTHOR("Hung-Wei Tseng <htseng3@ncsu.edu>");
