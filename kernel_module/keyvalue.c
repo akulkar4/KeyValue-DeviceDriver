@@ -42,6 +42,7 @@
 #include <linux/poll.h>
 //#include <stdlib.h>
 
+#define DEBUG 1
 #define H_BITS 10
 #define H_SIZE 1024
 
@@ -75,7 +76,7 @@ keyval_node *hashtable[H_SIZE];
  */
 static long keyvalue_get(struct keyvalue_get __user *ukv)
 {
-    uint8_t result;
+    uint32_t result;
     struct keyvalue_get getStruct;
     copy_from_user(&getStruct, ukv, sizeof(getStruct));
     uint16_t key = gethashkey(getStruct.key);
@@ -86,7 +87,6 @@ static long keyvalue_get(struct keyvalue_get __user *ukv)
 	if(tmp->key == getStruct.key)
 	  {
 	    result = copy_to_user(getStruct.size, &(tmp->size), sizeof(tmp->size));
-	    printk(KERN_DEBUG "Result of size:%d",result);
 	    result = copy_to_user(getStruct.data, tmp->data, tmp->size);
 	    printk(KERN_DEBUG "HIT! Size: %d, Result is :%d\n", sizeof(tmp->size),result);
 	    return transaction_id++;
@@ -94,7 +94,6 @@ static long keyvalue_get(struct keyvalue_get __user *ukv)
 	else
 	  tmp = tmp->next;
       }
-
     return -1;
 }
 
@@ -106,14 +105,32 @@ static long keyvalue_get(struct keyvalue_get __user *ukv)
  */
 static long keyvalue_set(struct keyvalue_set __user *ukv)
 {
-  uint8_t result;
+  uint32_t result;
   struct keyvalue_set setStruct;
   copy_from_user(&setStruct, ukv, sizeof(setStruct));
-  printk(KERN_DEBUG "Key: %lu, Size :%d, String: %s\n", setStruct.key, setStruct.size, setStruct.data);
   uint16_t key = gethashkey(setStruct.key);
   keyval_node *tmp = hashtable[key];
+  
+  //first element in the key-list?
+  if(tmp == NULL)
+    {
+       tmp = (keyval_node *)kmalloc(sizeof(keyval_node), GFP_KERNEL);
+       hashtable[key] = tmp;
+       tmp->key = setStruct.key;
+       tmp->size = setStruct.size;
+       tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
+       result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
+#if DEBUG
+       printk(KERN_DEBUG "Added to head. Result is :%d, Key:%lu, Size:%d, String: %s\n", result, tmp->key, tmp->size, tmp->data);
+#endif
+       tmp->next = NULL;
+       if(result != 0)
+	 return -1;
+       else
+	 return transaction_id++;
+    }
 
-  while(tmp != NULL)
+  while(tmp->next != NULL)
     {
       if(tmp->key == setStruct.key)
 
@@ -122,7 +139,9 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
 	  tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
 	  tmp->size = setStruct.size;
 	  result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
-	  printk(KERN_DEBUG "Result is :%d\n, String: %s\n", result, tmp->data);
+#if DEBUG
+	  printk(KERN_DEBUG "Matched a key, re-wrote. Result is :%d, String: %s\n", result, tmp->data);
+#endif
 	  if(result != 0)
 	    return -1;
 	  else
@@ -131,29 +150,94 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
       else
 	tmp = tmp->next;
     }
-
-  tmp = (keyval_node *)kmalloc(sizeof(keyval_node), GFP_KERNEL);
-  hashtable[key] = tmp;
-  tmp->key = setStruct.key;
-  tmp->size = setStruct.size;
-  tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
-  result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
-  printk(KERN_DEBUG "Result is :%d, Key:%lu, Size:%d, String: %s\n", result, tmp->key, tmp->size, tmp->data);
-  tmp->next = NULL;
-  if(result != 0)
-    return -1;
-  else
-    return transaction_id++;
+  
+  //adding to the tail in case of hash collision
+  if(tmp->next == NULL)
+    {
+      keyval_node *newnode = (keyval_node *)kmalloc(sizeof(keyval_node), GFP_KERNEL);
+      newnode->key = setStruct.key;
+      newnode->size = setStruct.size;
+      newnode->data = kmalloc(setStruct.size, GFP_KERNEL);
+      result = copy_from_user(newnode->data, setStruct.data, setStruct.size);
+#if DEBUG
+      printk(KERN_DEBUG "Added to tail. Result is :%d, Key:%lu, Size:%d, String: %s\n", result, newnode->key, newnode->size, newnode->data);
+#endif
+      newnode->next = NULL;
+      tmp->next = newnode;
+      if(result != 0)
+	return -1;
+      else
+	return transaction_id++;
+    }
 }
 
 /*  keyvalue_delete: 
  *- Checks if key exists. 
  *- Free the node, adjust list 
- *- Returns 1 on success, 0 on failure
+ *- Returns 1 on success, -1 on failure
  */
 static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 {
-  return transaction_id++;
+  uint32_t result;
+  struct keyvalue_delete delStruct;
+  result = copy_from_user(&delStruct, ukv, sizeof(delStruct));
+  uint16_t key = gethashkey(delStruct.key);
+  keyval_node *tmp = hashtable[key];
+  keyval_node *nxtPtr = NULL;
+  keyval_node *prev = NULL;
+
+  if(tmp == NULL)
+    return -1; 
+
+  while(tmp->next != NULL)
+    {
+      if(tmp->key == delStruct.key)
+	{
+	      kfree(tmp->data);
+	      tmp->key = tmp->next->key;
+	      tmp->size = tmp->next->size;
+	      tmp->data = tmp->next->data;
+	      nxtPtr = tmp->next->next;
+	      kfree(tmp->next);
+	      tmp->next = nxtPtr;
+#if DEBUG
+	      printk(KERN_DEBUG "Deleted node in the middle!\n");
+#endif
+	      return transaction_id++;
+	}
+      else
+	{
+	  prev = tmp;
+	  tmp = tmp->next;
+	}
+    }
+
+  if(tmp->next == NULL && tmp->key == delStruct.key)
+    {
+      if(tmp != hashtable[key])
+	{
+	  kfree(prev->next->data);
+	  kfree(prev->next);
+	  prev->next == NULL;
+#if DEBUG
+	  printk(KERN_DEBUG "Deleted node in the tail!\n");
+#endif
+	  return transaction_id++;
+	}
+      
+      else if(tmp == hashtable[key])
+	{
+	  kfree(tmp->data);
+	  kfree(tmp);
+	  hashtable[key] = NULL;
+#if DEBUG
+	  printk(KERN_DEBUG "Deleted lone head!\n");
+#endif
+	  return transaction_id++;
+	}
+    }
+  
+  return -1;
 }
 
 //Added by Hung-Wei
