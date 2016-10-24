@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
         a = rand();
         sprintf(data,"%d",a);
         tid = kv_set(devfd,i,strlen(data),data);
-        fprintf(stderr,"S\t%d\t%d\t%d\t%s\n",tid,i,strlen(data),data);
+        fprintf(stdout,"S\t%d\t%d\t%d\t%s\n",tid,i,strlen(data),data);
     }
 /*    for(i = 0; i < number_of_transactions; i++)
     {
