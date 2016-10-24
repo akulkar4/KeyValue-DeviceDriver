@@ -40,6 +40,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/poll.h>
+#include <linux/mutex.h>
 //#include <stdlib.h>
 
 #define DEBUG 1
@@ -66,6 +67,9 @@ static void free_callback(void *data)
  *TODO: Can be converted to thread functions. 
  *TODO: Kernel level threading?
 */
+//struct mutex *devlock;
+//mutex_init(devlock);
+DEFINE_MUTEX(devlock);
 uint16_t gethashkey(uint64_t key);
 keyval_node *hashtable[H_SIZE];
 
@@ -76,25 +80,28 @@ keyval_node *hashtable[H_SIZE];
  */
 static long keyvalue_get(struct keyvalue_get __user *ukv)
 {
-    uint32_t result;
-    struct keyvalue_get getStruct;
-    copy_from_user(&getStruct, ukv, sizeof(getStruct));
-    uint16_t key = gethashkey(getStruct.key);
-    keyval_node *tmp = hashtable[key];
-    
-    while (tmp != NULL)
-      {
-	if(tmp->key == getStruct.key)
-	  {
-	    result = copy_to_user(getStruct.size, &(tmp->size), sizeof(tmp->size));
-	    result = copy_to_user(getStruct.data, tmp->data, tmp->size);
-	    printk(KERN_DEBUG "HIT! Size: %d, Result is :%d\n", sizeof(tmp->size),result);
-	    return transaction_id++;
-	  }
-	else
-	  tmp = tmp->next;
-      }
-    return -1;
+  mutex_lock(&devlock);
+  uint32_t result;
+  struct keyvalue_get getStruct;
+  copy_from_user(&getStruct, ukv, sizeof(getStruct));
+  uint16_t key = gethashkey(getStruct.key);
+  keyval_node *tmp = hashtable[key];
+  
+  while (tmp != NULL)
+    {
+      if(tmp->key == getStruct.key)
+	{
+	  result = copy_to_user(getStruct.size, &(tmp->size), sizeof(tmp->size));
+	  result = copy_to_user(getStruct.data, tmp->data, tmp->size);
+	  printk(KERN_DEBUG "HIT! Size: %d, Result is :%d\n", sizeof(tmp->size),result);
+	  mutex_unlock(&devlock);
+	  return transaction_id++;
+	}
+      else
+	tmp = tmp->next;
+    }
+  mutex_unlock(&devlock);
+  return -1;
 }
 
 /*  keyvalue_set: 
@@ -105,6 +112,7 @@ static long keyvalue_get(struct keyvalue_get __user *ukv)
  */
 static long keyvalue_set(struct keyvalue_set __user *ukv)
 {
+  mutex_lock(&devlock);
   uint32_t result;
   struct keyvalue_set setStruct;
   copy_from_user(&setStruct, ukv, sizeof(setStruct));
@@ -124,6 +132,7 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
        printk(KERN_DEBUG "Added to head. Result is :%d, Key:%lu, Size:%d, String: %s\n", result, tmp->key, tmp->size, tmp->data);
 #endif
        tmp->next = NULL;
+       mutex_unlock(&devlock);
        if(result != 0)
 	 return -1;
        else
@@ -142,6 +151,7 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
 #if DEBUG
 	  printk(KERN_DEBUG "Matched a key, re-wrote. Result is :%d, String: %s\n", result, tmp->data);
 #endif
+	  mutex_unlock(&devlock);
 	  if(result != 0)
 	    return -1;
 	  else
@@ -164,6 +174,7 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
 #endif
       newnode->next = NULL;
       tmp->next = newnode;
+      mutex_unlock(&devlock);
       if(result != 0)
 	return -1;
       else
@@ -178,6 +189,7 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
  */
 static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 {
+  mutex_lock(&devlock);
   uint32_t result;
   struct keyvalue_delete delStruct;
   result = copy_from_user(&delStruct, ukv, sizeof(delStruct));
@@ -187,7 +199,10 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
   keyval_node *prev = NULL;
 
   if(tmp == NULL)
-    return -1; 
+    {
+      mutex_unlock(&devlock);
+      return -1;
+    } 
 
   while(tmp->next != NULL)
     {
@@ -203,6 +218,7 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 #if DEBUG
 	      printk(KERN_DEBUG "Deleted node in the middle!\n");
 #endif
+	      mutex_unlock(&devlock);
 	      return transaction_id++;
 	}
       else
@@ -222,6 +238,7 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 #if DEBUG
 	  printk(KERN_DEBUG "Deleted node in the tail!\n");
 #endif
+	  mutex_unlock(&devlock);
 	  return transaction_id++;
 	}
       
@@ -233,10 +250,11 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 #if DEBUG
 	  printk(KERN_DEBUG "Deleted lone head!\n");
 #endif
+	  mutex_unlock(&devlock);
 	  return transaction_id++;
 	}
     }
-  
+  mutex_unlock(&devlock);
   return -1;
 }
 

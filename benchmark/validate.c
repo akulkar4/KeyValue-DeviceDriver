@@ -44,6 +44,7 @@ int main(int argc, char *argv[])
     }
     for(i = 0; i < number_of_keys; i++)
     {
+      printf("Inside for loop\n");
         memset(data,0,4096);
         tid = kv_get(devfd,i,&size,&data);
         if(strcmp(data,kv[i])!=0)
