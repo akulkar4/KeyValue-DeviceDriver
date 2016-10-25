@@ -88,12 +88,14 @@ static long keyvalue_get(struct keyvalue_get __user *ukv)
   keyval_node *tmp = hashtable[key];
   
   while (tmp != NULL)
-    {
+    {  
       if(tmp->key == getStruct.key)
 	{
 	  result = copy_to_user(getStruct.size, &(tmp->size), sizeof(tmp->size));
 	  result = copy_to_user(getStruct.data, tmp->data, tmp->size);
+#if DEBUG
 	  printk(KERN_DEBUG "HIT! Size: %d, Result is :%d\n", sizeof(tmp->size),result);
+#endif
 	  mutex_unlock(&devlock);
 	  return transaction_id++;
 	}
@@ -129,7 +131,7 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
        tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
        result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
 #if DEBUG
-       printk(KERN_DEBUG "Added to head. Result is :%d, Key:%lu, Size:%d, String: %s\n", result, tmp->key, tmp->size, tmp->data);
+       printk(KERN_DEBUG "Added to head. Result is :%d, Hash key:%d, Key:%lu, Size:%d, String: %s\n", result, key, tmp->key, tmp->size, tmp->data);
 #endif
        tmp->next = NULL;
        mutex_unlock(&devlock);
@@ -164,21 +166,40 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
   //adding to the tail in case of hash collision
   if(tmp->next == NULL)
     {
-      keyval_node *newnode = (keyval_node *)kmalloc(sizeof(keyval_node), GFP_KERNEL);
-      newnode->key = setStruct.key;
-      newnode->size = setStruct.size;
-      newnode->data = kmalloc(setStruct.size, GFP_KERNEL);
-      result = copy_from_user(newnode->data, setStruct.data, setStruct.size);
+      if(tmp->key == setStruct.key)
+	{
+	  kfree(tmp->data);
+	  tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
+	  tmp->size = setStruct.size;
+	  result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
 #if DEBUG
-      printk(KERN_DEBUG "Added to tail. Result is :%d, Key:%lu, Size:%d, String: %s\n", result, newnode->key, newnode->size, newnode->data);
+	  printk(KERN_DEBUG "Matched a key, re-wrote. Result is :%d, String: %s\n", result, tmp->data);
 #endif
-      newnode->next = NULL;
-      tmp->next = newnode;
-      mutex_unlock(&devlock);
-      if(result != 0)
-	return -1;
+	  mutex_unlock(&devlock);
+	  if(result != 0)
+	    return -1;
+	  else
+	    return transaction_id++;
+
+	}
       else
-	return transaction_id++;
+	{
+	  keyval_node *newnode = (keyval_node *)kmalloc(sizeof(keyval_node), GFP_KERNEL);
+	  newnode->key = setStruct.key;
+	  newnode->size = setStruct.size;
+	  newnode->data = kmalloc(setStruct.size, GFP_KERNEL);
+	  result = copy_from_user(newnode->data, setStruct.data, setStruct.size);
+#if DEBUG
+	  printk(KERN_DEBUG "Added to tail. Result is :%d, Hash Key:%d, Key:%lu, Size:%d, String: %s\n", result, key, newnode->key, newnode->size, newnode->data);
+#endif
+	  newnode->next = NULL;
+	  tmp->next = newnode;
+	  mutex_unlock(&devlock);
+	  if(result != 0)
+	    return -1;
+	  else
+	    return transaction_id++;
+	}
     }
 }
 
@@ -325,7 +346,8 @@ static void __exit keyvalue_exit(void)
  */
 uint16_t gethashkey(uint64_t key)
 {
-  return ((key * 11400714819323198549ul) >> (64 - H_BITS));
+  //return ((key * 11400714819323198549ul) >> (64 - H_BITS));
+  return((key%H_SIZE));
 }
 
 MODULE_AUTHOR("Hung-Wei Tseng <htseng3@ncsu.edu>");
