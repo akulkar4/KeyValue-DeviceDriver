@@ -61,22 +61,19 @@ static void free_callback(void *data)
 {
 }
 
-
-/*handlers required for handling get, set and del
- *return types void for now.
- *TODO: Can be converted to thread functions. 
- *TODO: Kernel level threading?
-*/
-//struct mutex *devlock;
-//mutex_init(devlock);
+/*
+ * Mutex init
+ * hashfunction declaration
+ * hashtable init
+ */
 DEFINE_MUTEX(devlock);
 uint16_t gethashkey(uint64_t key);
 keyval_node *hashtable[H_SIZE];
 
 /*  keyvalue_get: 
- *- Searches list starting from head. 
- *- Returns 1 if found, 0 if not found.
- *- If found, assigns values to passed struct.
+ * Searches list starting from head. 
+ * Returns 1 if found, 0 if not found.
+ * If found, assigns values to passed struct.
  */
 static long keyvalue_get(struct keyvalue_get __user *ukv)
 {
@@ -120,7 +117,8 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
   copy_from_user(&setStruct, ukv, sizeof(setStruct));
   uint16_t key = gethashkey(setStruct.key);
   keyval_node *tmp = hashtable[key];
-  
+  keyval_node *prev = NULL;
+
   //first element in the key-list?
   if(tmp == NULL)
     {
@@ -130,9 +128,9 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
        tmp->size = setStruct.size;
        tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
        result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
-#if DEBUG
+       #if DEBUG
        printk(KERN_DEBUG "Added to head. Result is :%d, Hash key:%d, Key:%lu, Size:%d, String: %s\n", result, key, tmp->key, tmp->size, tmp->data);
-#endif
+       #endif
        tmp->next = NULL;
        mutex_unlock(&devlock);
        if(result != 0)
@@ -141,7 +139,7 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
 	 return transaction_id++;
     }
 
-  while(tmp->next != NULL)
+  while(tmp  != NULL)
     {
       if(tmp->key == setStruct.key)
 
@@ -150,9 +148,9 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
 	  tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
 	  tmp->size = setStruct.size;
 	  result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
-#if DEBUG
+          #if DEBUG
 	  printk(KERN_DEBUG "Matched a key, re-wrote. Result is :%d, String: %s\n", result, tmp->data);
-#endif
+          #endif
 	  mutex_unlock(&devlock);
 	  if(result != 0)
 	    return -1;
@@ -160,53 +158,38 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
 	    return transaction_id++;
 	}
       else
-	tmp = tmp->next;
+	{
+	  prev = tmp;
+	  tmp = tmp->next;
+	}
     }
   
   //adding to the tail in case of hash collision
-  if(tmp->next == NULL)
+  if(tmp == NULL)
     {
-      if(tmp->key == setStruct.key)
-	{
-	  kfree(tmp->data);
-	  tmp->data = kmalloc(setStruct.size, GFP_KERNEL);
-	  tmp->size = setStruct.size;
-	  result = copy_from_user(tmp->data, setStruct.data, setStruct.size);
-#if DEBUG
-	  printk(KERN_DEBUG "Matched a key, re-wrote. Result is :%d, String: %s\n", result, tmp->data);
-#endif
-	  mutex_unlock(&devlock);
-	  if(result != 0)
-	    return -1;
-	  else
-	    return transaction_id++;
-
-	}
-      else
-	{
 	  keyval_node *newnode = (keyval_node *)kmalloc(sizeof(keyval_node), GFP_KERNEL);
 	  newnode->key = setStruct.key;
 	  newnode->size = setStruct.size;
 	  newnode->data = kmalloc(setStruct.size, GFP_KERNEL);
 	  result = copy_from_user(newnode->data, setStruct.data, setStruct.size);
-#if DEBUG
-	  printk(KERN_DEBUG "Added to tail. Result is :%d, Hash Key:%d, Key:%lu, Size:%d, String: %s\n", result, key, newnode->key, newnode->size, newnode->data);
-#endif
+          #if DEBUG
+	  printk(KERN_DEBUG "Added to tail. Result is :%d, Hash Key:%d, Key:%lu, Size:%d, String: %s\n", result, 
+	key, newnode->key, newnode->size, newnode->data);
+          #endif
 	  newnode->next = NULL;
-	  tmp->next = newnode;
+	  prev->next = newnode;
 	  mutex_unlock(&devlock);
 	  if(result != 0)
 	    return -1;
 	  else
 	    return transaction_id++;
-	}
     }
 }
 
-/*  keyvalue_delete: 
- *- Checks if key exists. 
- *- Free the node, adjust list 
- *- Returns 1 on success, -1 on failure
+/* keyvalue_delete: 
+ * Checks if key exists. 
+ * Free the node, adjust list 
+ * Returns 1 on success, -1 on failure
  */
 static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 {
@@ -236,9 +219,9 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 	      nxtPtr = tmp->next->next;
 	      kfree(tmp->next);
 	      tmp->next = nxtPtr;
-#if DEBUG
+              #if DEBUG     
 	      printk(KERN_DEBUG "Deleted node in the middle!\n");
-#endif
+              #endif
 	      mutex_unlock(&devlock);
 	      return transaction_id++;
 	}
@@ -256,9 +239,9 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 	  kfree(prev->next->data);
 	  kfree(prev->next);
 	  prev->next == NULL;
-#if DEBUG
+          #if DEBUG
 	  printk(KERN_DEBUG "Deleted node in the tail!\n");
-#endif
+          #endif
 	  mutex_unlock(&devlock);
 	  return transaction_id++;
 	}
@@ -268,9 +251,9 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 	  kfree(tmp->data);
 	  kfree(tmp);
 	  hashtable[key] = NULL;
-#if DEBUG
+          #if DEBUG
 	  printk(KERN_DEBUG "Deleted lone head!\n");
-#endif
+          #endif
 	  mutex_unlock(&devlock);
 	  return transaction_id++;
 	}
