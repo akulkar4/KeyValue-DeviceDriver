@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
     int tid;
     __u64 size;
     __u64 key;
-    char data[4096],op;
+    char data[4096], orig_data[4096], op;
     char **kv;
     int devfd;
     int error = 0;
@@ -30,10 +30,10 @@ int main(int argc, char *argv[])
     // Validate
     while(scanf("%c %llu %llu %d %s",&op, &tid, &key, &size, &data)!=EOF)
     {
-        if(op == 'S')
+      if(op == 'S')
         {
-            strcpy(kv[(int)key],data);
-            memset(data,0,4096);
+	  strcpy(kv[(int)key],data);
+	  memset(data,0,4096);
         }
     }
     devfd = open("/dev/keyvalue",O_RDWR);
@@ -43,19 +43,24 @@ int main(int argc, char *argv[])
         exit(1);
     }
     for(i = 0; i < number_of_keys; i++)
-    {
-      printf("Inside for loop\n");
-        memset(data,0,4096);
-        tid = kv_get(devfd,i,&size,&data);
-        if(strcmp(data,kv[i])!=0)
-        {
-            fprintf(stderr, "Key %i has a wrong value %s v.s. %s\n",i,data,kv[i]);
-            error++;
-        }
+      {
+	printf("Inside for loop\n");
+	memset(data,0,4096);
+	tid = kv_get(devfd,i,&size,&data);
+	if(strcmp(data,kv[i])!=0)
+	  {
+	    fprintf(stderr, "Key %i has a wrong value %s v.s. %s\n",i,data,kv[i]);
+	    error++;
+	  }
+      }
+    
+    for(i = 0; i < number_of_keys; i++)
+      {
 	tid = kv_delete(devfd,i);
-    }
+      }
+    
     if(error==0)
-            fprintf(stderr, "You passed!\n");
+      fprintf(stderr, "You passed!\n");
     
     close(devfd);
     return 0;
