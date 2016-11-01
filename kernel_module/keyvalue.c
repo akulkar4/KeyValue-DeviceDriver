@@ -42,7 +42,7 @@
 #include <linux/poll.h>
 #include <linux/mutex.h>
 
-#define DEBUG 1
+#define DEBUG 0
 #define H_BITS 10
 #define H_SIZE 1024
 
