@@ -77,6 +77,7 @@ keyval_node *hashtable[H_SIZE];
 static long keyvalue_get(struct keyvalue_get __user *ukv)
 {
   uint32_t result;
+  unsigned tid;
   struct keyvalue_get getStruct;
   uint16_t key;
   keyval_node *tmp;
@@ -104,9 +105,9 @@ static long keyvalue_get(struct keyvalue_get __user *ukv)
           #if DEBUG
 	  printk(KERN_DEBUG "HIT! Size: %d, Result is :%d\n", sizeof(tmp->size),result);
           #endif
-	  transaction_id++;
+	  tid = transaction_id++;
 	  mutex_unlock(&devlock);
-	  return transaction_id;
+	  return tid;
 	}
       else
 	tmp = tmp->next;
@@ -125,6 +126,7 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
 {
   uint32_t result;
   uint16_t key;
+  unsigned tid;
   struct keyvalue_set setStruct;
   keyval_node *tmp;
   keyval_node *prev;
@@ -170,9 +172,9 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
           #if DEBUG
 	  printk(KERN_DEBUG "Added to head. Hash key:%d, Key:%lu, Size:%d, String: %s\n", key, tmp->key, tmp->size, tmp->data);
           #endif
-	  transaction_id++;
+	  tid = transaction_id++;
 	  mutex_unlock(&devlock);	
-	  return transaction_id;
+	  return tid;
 	}
     }
   
@@ -200,9 +202,9 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
               #if DEBUG
 	      printk(KERN_DEBUG "Matched a key, re-wrote. Result is :%d, String: %s\n", result, tmp->data);
               #endif
-	      transaction_id++;
+	      tid = transaction_id++;
 	      mutex_unlock(&devlock);	
-	      return transaction_id;
+	      return tid;
 	    }
 	}
       else
@@ -238,9 +240,9 @@ static long keyvalue_set(struct keyvalue_set __user *ukv)
 	      printk(KERN_DEBUG "Added to tail. Result is :%d, Hash Key:%d, Key:%lu, Size:%d, String: %s\n", result, 
 		 key, newnode->key, newnode->size, newnode->data);
               #endif
-	      transaction_id++;
+	      tid = transaction_id++;
 	      mutex_unlock(&devlock);
-	      return transaction_id;
+	      return tid;
 	    }
     }
 }
@@ -254,6 +256,7 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
 {
   uint32_t result;
   uint16_t key;
+  unsigned tid;
   struct keyvalue_delete delStruct;
   keyval_node *tmp;
   keyval_node *nxtPtr;
@@ -271,12 +274,14 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
   nxtPtr = NULL;
   prev = NULL;
 
+  //empty hash entry
   if(tmp == NULL)
     {
       mutex_unlock(&devlock);
       return -1;
     } 
 
+  //search for key
   while(tmp->next != NULL)
     {
       if(tmp->key == delStruct.key)
@@ -291,9 +296,9 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
               #if DEBUG     
 	      printk(KERN_DEBUG "Deleted node in the middle!\n");
               #endif
-	      transaction_id++;
+	      tid = transaction_id++;
 	      mutex_unlock(&devlock);
-	      return transaction_id;
+	      return tid;
 	}
       else
 	{
@@ -312,9 +317,9 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
           #if DEBUG
 	  printk(KERN_DEBUG "Deleted node in the tail!\n");
           #endif
-	  transaction_id++;
+	  tid = transaction_id++;
 	  mutex_unlock(&devlock);
-	  return transaction_id;
+	  return tid;
 	}
       
       else if(tmp == hashtable[key])
@@ -325,9 +330,9 @@ static long keyvalue_delete(struct keyvalue_delete __user *ukv)
           #if DEBUG
 	  printk(KERN_DEBUG "Deleted lone head!\n");
           #endif
-	  transaction_id++;
+	  tid = transaction_id++;
 	  mutex_unlock(&devlock);
-	  return transaction_id;
+	  return tid;
 	}
     }
   mutex_unlock(&devlock);
