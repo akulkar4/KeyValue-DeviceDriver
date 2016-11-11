@@ -1,5 +1,5 @@
 # KeyValue-DeviceDriver
-A loadable kernel module that creates a pseudo device which maintains a key-value store in the kernel and allows different processes to share data by accessing this device.
+A loadable kernel module for Ubuntu that creates a pseudo device which maintains a key-value store in the kernel and allows different processes to share data by accessing this device.
 
 ## Directions to compile
 1. Clone the repo.
